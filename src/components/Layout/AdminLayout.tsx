@@ -51,6 +51,15 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
   } = useAdminData();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const mainRef = React.useRef<HTMLElement>(null);
+
+  React.useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    if (mainRef.current) {
+      mainRef.current.scrollTop = 0;
+      mainRef.current.scrollLeft = 0;
+    }
+  }, [currentTab]);
 
   // Exact 15 navigation items in exact order required by specification
   const navItems: NavItem[] = [
@@ -236,7 +245,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({
         </aside>
 
         {/* Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#0A0F1D]">
+        <main ref={mainRef} className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#0A0F1D]">
           <div className="max-w-7xl mx-auto space-y-6">
             {children}
           </div>

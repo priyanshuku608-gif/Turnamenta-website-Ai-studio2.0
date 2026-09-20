@@ -21,32 +21,20 @@ import { ref, push, set, update, remove, get, serverTimestamp } from 'firebase/d
 import { db } from '../../lib/firebase';
 import { useAdminData } from '../../context/AdminDataContext';
 import { Tournament, Game, RegisteredPlayer } from '../../types';
+import { TournamentFormModal } from './TournamentFormModal';
+import { getFilledPlayerSlots } from '../../lib/tournamentUtils';
+import { cancelTournamentWithRefund } from '../../lib/tournamentAdminActions';
 
 export const TournamentsScreen: React.FC = () => {
   const { tournaments, games, users } = useAdminData();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTournament, setEditingTournament] = useState<Tournament | null>(null);
-
-  // Form State
-  const [gameId, setGameId] = useState('');
-  const [name, setName] = useState('');
-  const [startTime, setStartTime] = useState('');
-  const [status, setStatus] = useState<'upcoming' | 'ongoing' | 'result' | 'completed' | 'cancelled'>('upcoming');
-  const [entryFee, setEntryFee] = useState<number | ''>(10);
-  const [prizePool, setPrizePool] = useState<number | ''>(100);
-  const [perKillPrize, setPerKillPrize] = useState<number | ''>(5);
-  const [maxPlayers, setMaxPlayers] = useState<number | ''>(100);
-  const [bannerUrl, setBannerUrl] = useState('');
-  const [mode, setMode] = useState('Solo');
-  const [tagsInput, setTagsInput] = useState('');
-  const [description, setDescription] = useState('');
-  const [roomId, setRoomId] = useState('');
-  const [roomPassword, setRoomPassword] = useState('');
-  const [showIdPass, setShowIdPass] = useState(false);
-
   const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Cancellation State
+  const [cancelModalTournament, setCancelModalTournament] = useState<Tournament | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // Registered Players View Modal
   const [playersModalTournament, setPlayersModalTournament] = useState<Tournament | null>(null);
@@ -78,122 +66,38 @@ export const TournamentsScreen: React.FC = () => {
 
   const openAddModal = () => {
     setEditingTournament(null);
-    setGameId(games.length > 0 ? games[0].id : '');
-    setName('');
-    setStartTime(new Date(Date.now() + 3600000).toISOString().slice(0, 16));
-    setStatus('upcoming');
-    setEntryFee(10);
-    setPrizePool(100);
-    setPerKillPrize(5);
-    setMaxPlayers(100);
-    setBannerUrl('');
-    setMode('Solo');
-    setTagsInput('Ranked, Solo, Cash');
-    setDescription('');
-    setRoomId('');
-    setRoomPassword('');
-    setShowIdPass(false);
-    setErrorMsg(null);
     setModalOpen(true);
   };
 
   const openEditModal = (t: Tournament) => {
     setEditingTournament(t);
-    setGameId(t.gameId || (games.length > 0 ? games[0].id : ''));
-    setName(t.name || '');
-    setStartTime(t.startTime || '');
-    setStatus(t.status || 'upcoming');
-    setEntryFee(t.entryFee ?? 0);
-    setPrizePool(t.prizePool ?? 0);
-    setPerKillPrize(t.perKillPrize ?? 0);
-    setMaxPlayers(t.maxPlayers ?? 100);
-    setBannerUrl(t.bannerUrl || '');
-    setMode(t.mode || 'Solo');
-    setTagsInput(Array.isArray(t.tags) ? t.tags.join(', ') : '');
-    setDescription(t.description || '');
-    setRoomId(t.roomId || '');
-    setRoomPassword(t.roomPassword || '');
-    setShowIdPass(!!t.showIdPass);
-    setErrorMsg(null);
     setModalOpen(true);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
+  const handleSaveTournament = async (formData: any) => {
+    if (editingTournament) {
+      // Read existing registeredPlayers FIRST and re-attach
+      const existingSnap = await get(ref(db, `tournaments/${editingTournament.id}`));
+      const existingVal = existingSnap.val() || {};
+      const existingRegisteredPlayers = existingVal.registeredPlayers || editingTournament.registeredPlayers || null;
 
-    if (!name.trim()) {
-      setErrorMsg('Tournament Name is required.');
-      return;
-    }
+      const updatePayload: Record<string, any> = {
+        ...formData,
+        updatedAt: serverTimestamp(),
+      };
 
-    setLoading(true);
-    try {
-      const parsedTags = tagsInput
-        .split(',')
-        .map((t) => t.trim())
-        .filter((t) => t.length > 0);
-
-      if (editingTournament) {
-        // CRITICAL REQUIREMENT: When editing, read existing registeredPlayers FIRST and re-attach
-        const existingSnap = await get(ref(db, `tournaments/${editingTournament.id}`));
-        const existingVal = existingSnap.val() || {};
-        const existingRegisteredPlayers = existingVal.registeredPlayers || editingTournament.registeredPlayers || null;
-
-        const updatePayload: Record<string, any> = {
-          gameId: gameId.trim(),
-          name: name.trim(),
-          startTime: startTime.trim(),
-          status,
-          entryFee: Number(entryFee) || 0,
-          prizePool: Number(prizePool) || 0,
-          perKillPrize: Number(perKillPrize) || 0,
-          maxPlayers: Number(maxPlayers) || 100,
-          bannerUrl: bannerUrl.trim() || null,
-          mode: mode.trim(),
-          tags: parsedTags,
-          description: description.trim() || null,
-          roomId: roomId.trim() || null,
-          roomPassword: roomPassword.trim() || null,
-          showIdPass: Boolean(showIdPass),
-          updatedAt: serverTimestamp(),
-        };
-
-        if (existingRegisteredPlayers) {
-          updatePayload.registeredPlayers = existingRegisteredPlayers;
-        }
-
-        await update(ref(db, `tournaments/${editingTournament.id}`), updatePayload);
-      } else {
-        // Add new tournament
-        const newTournamentRef = push(ref(db, 'tournaments'));
-        await set(newTournamentRef, {
-          gameId: gameId.trim(),
-          name: name.trim(),
-          startTime: startTime.trim(),
-          status,
-          entryFee: Number(entryFee) || 0,
-          prizePool: Number(prizePool) || 0,
-          perKillPrize: Number(perKillPrize) || 0,
-          maxPlayers: Number(maxPlayers) || 100,
-          bannerUrl: bannerUrl.trim() || null,
-          mode: mode.trim(),
-          tags: parsedTags,
-          description: description.trim() || null,
-          roomId: roomId.trim() || null,
-          roomPassword: roomPassword.trim() || null,
-          showIdPass: Boolean(showIdPass),
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
+      if (existingRegisteredPlayers) {
+        updatePayload.registeredPlayers = existingRegisteredPlayers;
       }
 
-      setModalOpen(false);
-    } catch (err: any) {
-      console.error('Error saving tournament:', err);
-      setErrorMsg(err.message || 'Failed to save tournament.');
-    } finally {
-      setLoading(false);
+      await update(ref(db, `tournaments/${editingTournament.id}`), updatePayload);
+    } else {
+      const newTournamentRef = push(ref(db, 'tournaments'));
+      await set(newTournamentRef, {
+        ...formData,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
     }
   };
 
@@ -208,6 +112,24 @@ export const TournamentsScreen: React.FC = () => {
       alert('Failed to delete tournament: ' + err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Cancel Tournament with full refund
+  const handleConfirmCancel = async (t: Tournament) => {
+    setIsCancelling(true);
+    try {
+      const res = await cancelTournamentWithRefund(t);
+      if (res.success) {
+        alert(res.message);
+        setCancelModalTournament(null);
+      } else {
+        alert('Cannot Cancel: ' + res.message);
+      }
+    } catch (err: any) {
+      alert('Failed to cancel tournament: ' + err.message);
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -320,10 +242,9 @@ export const TournamentsScreen: React.FC = () => {
                 </tr>
               ) : (
                 filteredTournaments.map((t) => {
-                  const players = getRegisteredPlayersList(t);
-                  const registeredCount = players.length;
+                  const filledSlots = getFilledPlayerSlots(t);
                   const maxCount = t.maxPlayers || 100;
-                  const percentFilled = Math.min(100, Math.round((registeredCount / maxCount) * 100));
+                  const percentFilled = Math.min(100, Math.round((filledSlots / maxCount) * 100));
 
                   const statusColors: Record<string, string> = {
                     upcoming: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
@@ -368,8 +289,8 @@ export const TournamentsScreen: React.FC = () => {
                       {/* Financials */}
                       <td className="py-3 px-3">
                         <div className="space-y-0.5">
-                          <div className="text-slate-300">
-                            Entry: <strong className="text-white">₹{t.entryFee}</strong>
+                          <div className="text-slate-300 text-xs">
+                            Entry: <strong className="text-white">{Number(t.entryFee) === 0 ? 'Free' : `₹${t.entryFee}`}</strong>
                           </div>
                           <div className="text-[10px] text-[#B6FF3C] font-semibold">
                             Pool: ₹{t.prizePool}
@@ -404,7 +325,7 @@ export const TournamentsScreen: React.FC = () => {
                       <td className="py-3 px-3">
                         <div className="space-y-1">
                           <div className="text-xs font-semibold text-slate-200">
-                            {registeredCount} / {maxCount}
+                            {filledSlots} / {maxCount}
                           </div>
                           <div className="w-20 bg-slate-800 rounded-full h-1.5 overflow-hidden">
                             <div
@@ -436,6 +357,18 @@ export const TournamentsScreen: React.FC = () => {
                             <Edit2 className="w-3.5 h-3.5 text-blue-400" />
                           </button>
 
+                          {/* Cancel & Refund Button */}
+                          {t.status !== 'cancelled' && t.status !== 'completed' && !t.archived && (
+                            <button
+                              type="button"
+                              onClick={() => setCancelModalTournament(t)}
+                              title="Cancel Tournament & Refund Players"
+                              className="p-1.5 bg-amber-950/60 hover:bg-amber-900 border border-amber-500/40 text-amber-300 rounded-lg transition cursor-pointer"
+                            >
+                              <AlertTriangle className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => setDeleteConfirmId(t.id)}
@@ -456,253 +389,13 @@ export const TournamentsScreen: React.FC = () => {
       </div>
 
       {/* Add / Edit Tournament Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in overflow-y-auto">
-          <div className="w-full max-w-2xl bg-[#131C31] border border-slate-700 rounded-2xl p-6 shadow-2xl space-y-5 my-8">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-[#B6FF3C]" />
-                <span>{editingTournament ? 'Edit Tournament' : 'Create New Tournament'}</span>
-              </h3>
-              <button
-                type="button"
-                onClick={() => setModalOpen(false)}
-                className="text-slate-400 hover:text-white p-1"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {errorMsg && (
-              <div className="p-3 bg-red-950/70 border border-red-500/40 rounded-xl flex items-center gap-2 text-red-200 text-xs">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSave} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Game Select */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Game Category *</label>
-                  <select
-                    required
-                    value={gameId}
-                    onChange={(e) => setGameId(e.target.value)}
-                    className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                  >
-                    <option value="">Select Game</option>
-                    {games.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Tournament Name */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Tournament Name *</label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. 1 vs 1 Headshot Clash #44"
-                    className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none"
-                  />
-                </div>
-
-                {/* Start Time */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Start Time *</label>
-                  <input
-                    type="datetime-local"
-                    required
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-
-                {/* Status */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Status *</label>
-                  <select
-                    value={status}
-                    onChange={(e) => setStatus(e.target.value as any)}
-                    className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                  >
-                    <option value="upcoming">Upcoming</option>
-                    <option value="ongoing">Ongoing</option>
-                    <option value="result">Result / Result Announced</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
-                </div>
-
-                {/* Entry Fee */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Entry Fee (₹)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={entryFee}
-                    onChange={(e) => setEntryFee(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-
-                {/* Prize Pool */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Prize Pool (₹)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={prizePool}
-                    onChange={(e) => setPrizePool(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-
-                {/* Per Kill Prize */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Per Kill Prize (₹)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={perKillPrize}
-                    onChange={(e) => setPerKillPrize(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-
-                {/* Max Players */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Max Players / Slots</label>
-                  <input
-                    type="number"
-                    min={2}
-                    value={maxPlayers}
-                    onChange={(e) => setMaxPlayers(e.target.value === '' ? '' : Number(e.target.value))}
-                    className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-
-                {/* Mode */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Mode</label>
-                  <input
-                    type="text"
-                    value={mode}
-                    onChange={(e) => setMode(e.target.value)}
-                    placeholder="e.g. Solo, Duo, Squad, TDM"
-                    className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-
-                {/* Tags */}
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Tags (Comma-separated)</label>
-                  <input
-                    type="text"
-                    value={tagsInput}
-                    onChange={(e) => setTagsInput(e.target.value)}
-                    placeholder="Ranked, Headshot Only, Cash Match"
-                    className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Banner URL */}
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300">Banner Image URL</label>
-                <input
-                  type="url"
-                  value={bannerUrl}
-                  onChange={(e) => setBannerUrl(e.target.value)}
-                  placeholder="https://example.com/match-banner.png"
-                  className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
-                />
-              </div>
-
-              {/* Description / Rules */}
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300">Tournament Rules / Description</label>
-                <textarea
-                  rows={3}
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Match format, room rules, emulator restrictions, prize claim procedure..."
-                  className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
-                />
-              </div>
-
-              {/* Room Key & Password Section */}
-              <div className="p-4 bg-[#0A0F1D] border border-slate-800 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                    <Key className="w-4 h-4 text-[#B6FF3C]" />
-                    <span>In-Game Custom Room Credentials</span>
-                  </span>
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={showIdPass}
-                      onChange={(e) => setShowIdPass(e.target.checked)}
-                      className="rounded text-[#B6FF3C] focus:ring-0"
-                    />
-                    <span className="text-xs font-semibold text-slate-300">
-                      Publish to joined players
-                    </span>
-                  </label>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-slate-400">Room ID</label>
-                    <input
-                      type="text"
-                      value={roomId}
-                      onChange={(e) => setRoomId(e.target.value)}
-                      placeholder="e.g. 7654321"
-                      className="w-full bg-[#131C31] border border-slate-700 focus:border-[#B6FF3C] rounded-lg px-3 py-1.5 text-xs text-white outline-none font-mono"
-                    />
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[11px] text-slate-400">Room Password</label>
-                    <input
-                      type="text"
-                      value={roomPassword}
-                      onChange={(e) => setRoomPassword(e.target.value)}
-                      placeholder="e.g. 1234"
-                      className="w-full bg-[#131C31] border border-slate-700 focus:border-[#B6FF3C] rounded-lg px-3 py-1.5 text-xs text-white outline-none font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-2 flex items-center justify-end gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="px-4 py-2 bg-[#B6FF3C] hover:bg-[#a5e834] text-black font-extrabold text-xs rounded-xl transition active:scale-95 disabled:opacity-50"
-                >
-                  {loading ? 'Saving...' : editingTournament ? 'Save Tournament' : 'Publish Tournament'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <TournamentFormModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSave={handleSaveTournament}
+        editingTournament={editingTournament}
+        games={games}
+      />
 
       {/* View Registered Players Modal */}
       {playersModalTournament && (
@@ -817,6 +510,70 @@ export const TournamentsScreen: React.FC = () => {
                 className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold text-xs rounded-xl transition active:scale-95 disabled:opacity-50"
               >
                 {loading ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cancel Tournament & Refund Modal */}
+      {cancelModalTournament && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-[#1E293B] border border-red-500/60 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4 text-slate-100">
+            <div className="flex items-center gap-3 text-red-400">
+              <AlertTriangle className="w-6 h-6 shrink-0" />
+              <h3 className="font-extrabold text-base text-white">Cancel Tournament & Refund</h3>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Are you sure you want to cancel <strong className="text-white">"{cancelModalTournament.name}"</strong>?
+            </p>
+
+            <div className="bg-[#0F172A] border border-slate-800 rounded-xl p-3 text-xs space-y-2 text-slate-300">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Mode:</span>
+                <span className="font-bold text-white">{cancelModalTournament.mode || 'Solo'}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Entry Fee:</span>
+                <span className="font-bold text-[#B6FF3C]">
+                  {Number(cancelModalTournament.entryFee) === 0 ? 'Free' : `₹${cancelModalTournament.entryFee}`}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Total Joined Slots:</span>
+                <span className="font-bold text-white">
+                  {getFilledPlayerSlots(cancelModalTournament)} slots
+                </span>
+              </div>
+            </div>
+
+            <div className="text-xs text-amber-300/90 bg-amber-950/60 border border-amber-500/40 p-3 rounded-xl space-y-1">
+              <p className="font-bold">Automated Refund Policy:</p>
+              <ul className="list-disc list-inside space-y-0.5 text-[11px] text-slate-300">
+                <li>Every registered player will immediately receive their entry fee refunded back to their deposit wallet.</li>
+                <li>Duo/Squad multi-slot fees will be refunded in full.</li>
+                <li>An individual transaction record will be logged for each user.</li>
+                <li>The tournament status will be updated to "Cancelled" and new joins will be blocked.</li>
+              </ul>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isCancelling}
+                onClick={() => setCancelModalTournament(null)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-xl transition cursor-pointer"
+              >
+                Go Back
+              </button>
+              <button
+                type="button"
+                disabled={isCancelling}
+                onClick={() => handleConfirmCancel(cancelModalTournament)}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-extrabold rounded-xl transition shadow-lg cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isCancelling ? 'Refunding Players...' : 'Confirm Cancel & Refund'}
               </button>
             </div>
           </div>

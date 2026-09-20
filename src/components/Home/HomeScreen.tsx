@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Gamepad2, Swords } from 'lucide-react';
 import { useTournament } from '../../context/TournamentContext';
 import { useAuth } from '../../context/AuthContext';
@@ -32,17 +32,36 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   const activeGames: Game[] = games.length > 0 ? games : defaultModes;
 
-  // User's Joined Contests (Live from Realtime Database)
-  const myContests = tournaments.filter((t) => {
-    if (!currentUser) return false;
-    const isPlayerInTourney = t.registeredPlayers && (
-      Array.isArray(t.registeredPlayers)
-        ? t.registeredPlayers.some((p: any) => p?.uid === currentUser.uid || p?.userId === currentUser.uid)
-        : !!(t.registeredPlayers as Record<string, any>)[currentUser.uid]
-    );
-    const isTourneyInProfile = userProfile?.joinedTournaments && !!userProfile.joinedTournaments[t.id];
-    return isPlayerInTourney || isTourneyInProfile;
-  });
+  // Unified Single List of Joined Contests sorted by relevance (Ongoing -> Upcoming -> Result Announced -> Cancelled)
+  const userJoinedTournaments = useMemo(() => {
+    if (!currentUser) return [];
+    const joined = tournaments.filter((t) => {
+      const isPlayerInTourney = t.registeredPlayers && (
+        Array.isArray(t.registeredPlayers)
+          ? t.registeredPlayers.some((p: any) => p?.uid === currentUser.uid || p?.userId === currentUser.uid)
+          : !!(t.registeredPlayers as Record<string, any>)[currentUser.uid]
+      );
+      const isTourneyInProfile = userProfile?.joinedTournaments && !!userProfile.joinedTournaments[t.id];
+      return isPlayerInTourney || isTourneyInProfile;
+    });
+
+    return joined.sort((a, b) => {
+      const getPriority = (t: Tournament) => {
+        const s = (t.status || 'upcoming').toLowerCase();
+        if (s === 'ongoing') return 1;
+        if (s === 'upcoming') return 2;
+        if (t.resultsPublished || s === 'result') return 3;
+        if (s === 'cancelled') return 4;
+        return 5;
+      };
+      const pA = getPriority(a);
+      const pB = getPriority(b);
+      if (pA !== pB) return pA - pB;
+      const tA = new Date(a.startTime || 0).getTime() || 0;
+      const tB = new Date(b.startTime || 0).getTime() || 0;
+      return tA - tB;
+    });
+  }, [tournaments, currentUser, userProfile]);
 
   return (
     <div className="space-y-6 pb-24 animate-fade-in">
@@ -102,7 +121,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         </div>
       </div>
 
-      {/* 3. My Contests Section (Real Live Joined Matches) */}
+      {/* 3. My Contests Section (Unified Single List of Real Joined Matches) */}
       <div className="space-y-3.5 pt-1">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -110,27 +129,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <h2 className="text-base font-bold text-white tracking-wide">
               My Contests
             </h2>
-            {myContests.length > 0 && (
+            {userJoinedTournaments.length > 0 && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-[#38BDF8]/20 text-[#38BDF8] border border-[#38BDF8]/40">
-                {myContests.length}
+                {userJoinedTournaments.length}
               </span>
             )}
           </div>
-          {myContests.length > 0 && (
-            <span className="text-[11px] text-slate-400 font-medium">
-              Your registered matches
-            </span>
-          )}
         </div>
 
         {/* My Contests List or Clear Empty State */}
-        {myContests.length === 0 ? (
+        {userJoinedTournaments.length === 0 ? (
           <div className="text-center py-8 px-4 bg-[#1E293B] border border-slate-800 rounded-2xl space-y-2.5 shadow-md">
             <div className="w-11 h-11 rounded-full bg-slate-800 border border-slate-700/80 flex items-center justify-center mx-auto text-[#38BDF8] shadow-inner">
               <Swords className="w-5 h-5" />
             </div>
             <h4 className="font-bold text-sm text-slate-200">
-              You haven't joined any tournaments yet
+              You haven't joined any contests yet
             </h4>
             <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
               Tap any game in Esport Games above to join upcoming cash matches and compete for prizes!
@@ -138,7 +152,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         ) : (
           <div className="space-y-3.5">
-            {myContests.map((tournament) => (
+            {userJoinedTournaments.map((tournament) => (
               <TournamentCard
                 key={`my-${tournament.id}`}
                 tournament={tournament}

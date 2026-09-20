@@ -123,10 +123,10 @@ export const Header: React.FC<HeaderProps> = ({
         <button
           onClick={handleWalletClick}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#B6FF3C] text-black font-extrabold text-xs sm:text-sm tracking-tight hover:brightness-105 active:scale-95 transition shadow-[0_0_12px_rgba(182,255,60,0.3)] shrink-0"
-          aria-label="Open Wallet"
+          aria-label={currentUser ? "Open Wallet" : "Login"}
         >
           <WalletIcon className="w-3.5 h-3.5 fill-black text-black stroke-[2.5]" />
-          <span>₹{totalBalance}</span>
+          <span>{currentUser ? `₹${totalBalance}` : 'Login'}</span>
         </button>
       </div>
     </header>

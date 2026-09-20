@@ -2,6 +2,12 @@ import React from 'react';
 import { Calendar, Trophy, Swords, Users, Key, ArrowRight, Gamepad2 } from 'lucide-react';
 import { Tournament } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import {
+  getFilledPlayerSlots,
+  getSpotsLeft,
+  isUserAlreadyRegistered,
+  getPlayersPerEntry,
+} from '../../lib/tournamentUtils';
 
 interface TournamentCardProps {
   tournament: Tournament;
@@ -18,20 +24,12 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
 }) => {
   const { currentUser } = useAuth();
 
-  const isJoined = currentUser && tournament.registeredPlayers && !!(
-    Array.isArray(tournament.registeredPlayers)
-      ? tournament.registeredPlayers.some((p: any) => p?.uid === currentUser.uid || p?.userId === currentUser.uid)
-      : (tournament.registeredPlayers as Record<string, any>)[currentUser.uid]
-  );
-  const registeredCount = tournament.registeredPlayers
-    ? Array.isArray(tournament.registeredPlayers)
-      ? tournament.registeredPlayers.length
-      : Object.keys(tournament.registeredPlayers).length
-    : 0;
-  const spotsLeft = Math.max(0, tournament.maxPlayers - registeredCount);
+  const isJoined = currentUser ? isUserAlreadyRegistered(tournament, currentUser.uid) : false;
+  const registeredCount = getFilledPlayerSlots(tournament);
+  const spotsLeft = getSpotsLeft(tournament);
   const isFull = spotsLeft <= 0;
-  const isDuo = (tournament.mode || '').toLowerCase().includes('duo');
-  const totalFee = tournament.entryFee * (isDuo ? 2 : 1);
+  const playersPerEntry = getPlayersPerEntry(tournament.mode);
+  const totalFee = (tournament.entryFee || 0) * playersPerEntry;
 
   const formatStartTime = (st: string | number) => {
     const d = new Date(st);
@@ -48,6 +46,21 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
   };
 
   const getStatusBadge = () => {
+    if (tournament.status === 'cancelled') {
+      return (
+        <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-red-900/80 text-red-200 border border-red-500/50">
+          CANCELLED
+        </span>
+      );
+    }
+    if (tournament.resultsPublished || tournament.status === 'result') {
+      return (
+        <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-purple-900/80 text-purple-200 border border-purple-500/50 flex items-center gap-1">
+          <Trophy className="w-3 h-3 text-[#B6FF3C]" />
+          RESULT ANNOUNCED
+        </span>
+      );
+    }
     switch (tournament.status) {
       case 'ongoing':
         return (
@@ -56,17 +69,10 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
             LIVE NOW
           </span>
         );
-      case 'result':
       case 'completed':
         return (
           <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-700/80 text-slate-300">
             COMPLETED
-          </span>
-        );
-      case 'cancelled':
-        return (
-          <span className="px-2.5 py-1 rounded-md text-[11px] font-bold bg-red-900/60 text-red-300">
-            CANCELLED
           </span>
         );
       default:
@@ -167,7 +173,7 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
           <div>
             <span className="text-[10px] text-slate-400 block font-medium">Entry Fee</span>
             <span className="text-sm font-bold text-[#38BDF8]">
-              ₹{tournament.entryFee}
+              {Number(tournament.entryFee) === 0 ? 'Free' : `₹${tournament.entryFee}`}
             </span>
           </div>
         </div>
@@ -195,19 +201,36 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
         <div className="grid grid-cols-2 gap-2.5 pt-1">
           <button
             onClick={() => onDetailsClick(tournament)}
-            className="py-2.5 px-3 bg-[#0F172A] hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs rounded-xl text-center transition active:scale-95"
+            className="py-2.5 px-3 bg-[#0F172A] hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs rounded-xl text-center transition active:scale-95 cursor-pointer"
           >
             Details
           </button>
 
-          {isJoined ? (
+          {tournament.status === 'cancelled' ? (
             <button
-              onClick={() => onRoomKeyClick(tournament)}
-              className="py-2.5 px-3 bg-[#B6FF3C] hover:bg-[#a5e834] text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 shadow-[0_0_12px_rgba(182,255,60,0.3)]"
+              onClick={() => onDetailsClick(tournament)}
+              className="py-2.5 px-3 bg-red-950/70 hover:bg-red-900 border border-red-800 text-red-300 font-bold text-xs rounded-xl text-center transition cursor-pointer"
             >
-              <Key className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Room ID/Pass</span>
+              {isJoined ? 'Cancelled (Refunded)' : 'Cancelled'}
             </button>
+          ) : isJoined ? (
+            tournament.resultsPublished ? (
+              <button
+                onClick={() => onDetailsClick(tournament)}
+                className="py-2.5 px-3 bg-purple-600 hover:bg-purple-500 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 shadow-[0_0_12px_rgba(168,85,247,0.4)] cursor-pointer"
+              >
+                <Trophy className="w-3.5 h-3.5 stroke-[2.5] text-[#B6FF3C]" />
+                <span>Result</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => onRoomKeyClick(tournament)}
+                className="py-2.5 px-3 bg-[#B6FF3C] hover:bg-[#a5e834] text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 shadow-[0_0_12px_rgba(182,255,60,0.3)] cursor-pointer"
+              >
+                <Key className="w-3.5 h-3.5 stroke-[2.5]" />
+                <span>Room ID/Pass</span>
+              </button>
+            )
           ) : isFull ? (
             <button
               disabled
@@ -218,9 +241,9 @@ export const TournamentCard: React.FC<TournamentCardProps> = ({
           ) : (
             <button
               onClick={() => onJoinClick(tournament)}
-              className="py-2.5 px-3 bg-[#B6FF3C] hover:bg-[#a5e834] text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 shadow-[0_0_12px_rgba(182,255,60,0.3)]"
+              className="py-2.5 px-3 bg-[#B6FF3C] hover:bg-[#a5e834] text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 shadow-[0_0_12px_rgba(182,255,60,0.3)] cursor-pointer"
             >
-              <span>₹{totalFee} Join</span>
+              <span>{totalFee === 0 ? 'Free Join' : `₹${totalFee} Join`}</span>
               <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
             </button>
           )}

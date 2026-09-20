@@ -28,9 +28,10 @@ import { Tournament } from '../../types';
 
 interface ProfileScreenProps {
   onRoomKeyClick: (t: Tournament) => void;
+  onDetailsClick?: (t: Tournament) => void;
 }
 
-export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onRoomKeyClick }) => {
+export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onRoomKeyClick, onDetailsClick }) => {
   const { currentUser, userProfile, signOutUser, openAuthModal } = useAuth();
   const { settings } = useTournament();
 
@@ -391,6 +392,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({ onRoomKeyClick }) 
         isOpen={isHistoryModalOpen}
         onClose={() => setIsHistoryModalOpen(false)}
         onRoomKeyClick={onRoomKeyClick}
+        onDetailsClick={onDetailsClick}
       />
 
       <PolicyModal

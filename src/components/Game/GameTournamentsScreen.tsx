@@ -45,14 +45,15 @@ export const GameTournamentsScreen: React.FC<GameTournamentsScreenProps> = ({
   // Filter tournaments by selected status tab
   const isStatusMatch = (t: Tournament, tab: StatusTab) => {
     const status = (t.status || 'upcoming').toLowerCase();
+    const isFinished = status === 'result' || status === 'completed' || status === 'cancelled' || status === 'ended' || Boolean(t.resultsPublished);
     if (tab === 'upcoming') {
-      return status === 'upcoming';
+      return status === 'upcoming' && !isFinished;
     }
     if (tab === 'ongoing') {
-      return status === 'ongoing';
+      return status === 'ongoing' && !isFinished;
     }
     if (tab === 'result') {
-      return status === 'result' || status === 'completed' || status === 'cancelled' || status === 'ended';
+      return isFinished;
     }
     return true;
   };

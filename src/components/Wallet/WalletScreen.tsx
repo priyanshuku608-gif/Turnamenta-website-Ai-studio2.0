@@ -11,13 +11,15 @@ import {
   ShieldCheck,
   Sparkles,
   Trophy,
+  Swords,
   Gift,
   History,
   Zap,
   CreditCard,
   Layers,
   Copy,
-  Check
+  Check,
+  LogIn
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useTournament } from '../../context/TournamentContext';
@@ -86,6 +88,28 @@ export const WalletScreen: React.FC<WalletScreenProps> = () => {
         <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 bg-[#1E293B] border border-[#B6FF3C] px-4 py-2.5 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-bold text-[#B6FF3C] animate-fade-in max-w-[90vw]">
           <CheckCircle2 className="w-4 h-4 text-[#B6FF3C] shrink-0" />
           <span className="truncate">{showSuccessToast}</span>
+        </div>
+      )}
+
+      {/* Guest Mode Banner */}
+      {!currentUser && (
+        <div className="p-4 bg-gradient-to-r from-blue-950/80 via-[#1E293B] to-purple-950/80 border border-blue-500/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="space-y-1">
+            <span className="text-xs font-black text-[#B6FF3C] uppercase tracking-wider block">
+              Guest Mode
+            </span>
+            <p className="text-xs text-slate-300">
+              Sign in to manage your deposits, claim tournament winnings, and request withdrawals.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openAuthModal()}
+            className="px-4 py-2 bg-[#B6FF3C] hover:bg-[#a5e834] text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-95 shadow-md shrink-0"
+          >
+            <LogIn className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>Sign In / Register</span>
+          </button>
         </div>
       )}
 
@@ -263,8 +287,12 @@ export const WalletScreen: React.FC<WalletScreenProps> = () => {
               const isExpired = statusLower === 'expired';
               const isPending = !isApproved && !isRejected && !isExpired;
 
-              const isDeposit = (tx.type || '').toLowerCase().includes('deposit');
-              const isApiPayment = (tx.type || '').toLowerCase().includes('api') || tx.paymentMethod === 'api';
+              const typeLower = (tx.type || '').toLowerCase();
+              const isPrize = typeLower.includes('prize') || typeLower.includes('win');
+              const isTournamentEntry = typeLower.includes('join') || typeLower.includes('entry');
+              const isDeposit = typeLower.includes('deposit');
+              const isApiPayment = typeLower.includes('api') || tx.paymentMethod === 'api';
+              const isCredit = isPrize || isDeposit || tx.isCredit === true;
 
               // Visual Status Badge Styling
               const statusBadgeClass = isApproved
@@ -285,11 +313,25 @@ export const WalletScreen: React.FC<WalletScreenProps> = () => {
 
               // Amount color
               const amountColor = isApproved
-                ? (isDeposit ? 'text-emerald-400' : 'text-slate-100')
+                ? (isCredit ? 'text-emerald-400' : 'text-slate-200')
                 : (isRejected || isExpired ? 'text-slate-400 line-through' : 'text-amber-400');
 
               // Type Icon
               const renderTypeIcon = () => {
+                if (isPrize) {
+                  return (
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                      <Trophy className="w-5 h-5" />
+                    </div>
+                  );
+                }
+                if (isTournamentEntry) {
+                  return (
+                    <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                      <Swords className="w-5 h-5" />
+                    </div>
+                  );
+                }
                 if (isApiPayment) {
                   return (
                     <div className="w-10 h-10 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
@@ -333,13 +375,23 @@ export const WalletScreen: React.FC<WalletScreenProps> = () => {
                     <div className="min-w-0 flex-1 space-y-0.5">
                       <div className="flex items-center gap-2">
                         <span className="font-extrabold text-sm text-white tracking-wide truncate">
-                          {tx.type || (isDeposit ? 'Deposit' : 'Withdrawal')}
+                          {tx.description || tx.type || (isDeposit ? 'Deposit' : 'Withdrawal')}
                         </span>
                       </div>
 
-                      {/* Date & Status Row */}
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400 flex-wrap">
+                      {/* Date & Extra details (Kills, Rank) */}
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400 flex-wrap">
                         <span className="shrink-0">{formatTxTime(tx.timestamp)}</span>
+                        {tx.rank !== undefined && tx.rank > 0 && (
+                          <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                            Rank #{tx.rank}
+                          </span>
+                        )}
+                        {tx.kills !== undefined && tx.kills > 0 && (
+                          <span className="px-1.5 py-0.2 rounded bg-red-500/20 text-red-300 font-bold border border-red-500/30">
+                            {tx.kills} {tx.kills === 1 ? 'Kill' : 'Kills'}
+                          </span>
+                        )}
                       </div>
 
                       {/* Secondary Transaction ID / UTR line */}
@@ -369,7 +421,7 @@ export const WalletScreen: React.FC<WalletScreenProps> = () => {
                   {/* Right Side: Amount & Status Badge */}
                   <div className="text-right shrink-0 flex flex-col items-end gap-1">
                     <span className={`text-sm sm:text-base font-black tracking-tight ${amountColor}`}>
-                      {isApproved && isDeposit ? '+' : ''}₹{Number(tx.amount || 0).toFixed(2)}
+                      {isApproved && isCredit ? '+' : isApproved && !isCredit ? '-' : ''}₹{Number(tx.amount || 0).toFixed(2)}
                     </span>
 
                     {/* Scannable Status Badge */}

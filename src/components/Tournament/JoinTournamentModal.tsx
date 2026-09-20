@@ -3,6 +3,7 @@ import { X, Wallet, ShieldCheck, AlertCircle, ArrowRight, UserCheck } from 'luci
 import { Tournament } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { useTournament } from '../../context/TournamentContext';
+import { getPlayersPerEntry } from '../../lib/tournamentUtils';
 
 interface JoinTournamentModalProps {
   tournament: Tournament | null;
@@ -38,12 +39,13 @@ export const JoinTournamentModal: React.FC<JoinTournamentModalProps> = ({
   if (!isOpen || !tournament) return null;
 
   const isDuo = (tournament.mode || '').toLowerCase().includes('duo');
-  const totalFee = tournament.entryFee * (isDuo ? 2 : 1);
+  const playersPerEntry = getPlayersPerEntry(tournament.mode);
+  const totalFee = (tournament.entryFee || 0) * playersPerEntry;
 
   const depositBal = Number(userProfile?.depositBalance || userProfile?.balance || 0);
   const winningBal = Number(userProfile?.winningCash || 0);
   const totalBalance = depositBal + winningBal;
-  const isInsufficient = totalBalance < totalFee;
+  const isInsufficient = totalFee > 0 && totalBalance < totalFee;
 
   const handleJoinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,7 +119,9 @@ export const JoinTournamentModal: React.FC<JoinTournamentModalProps> = ({
 
             <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800/80">
               <span className="text-slate-400">Total Entry Fee {isDuo ? '(2 Players)' : ''}:</span>
-              <span className="font-bold text-[#B6FF3C] text-sm">₹{totalFee}</span>
+              <span className="font-bold text-[#B6FF3C] text-sm">
+                {totalFee === 0 ? 'Free' : `₹${totalFee}`}
+              </span>
             </div>
 
             {isInsufficient && (
@@ -217,18 +221,22 @@ export const JoinTournamentModal: React.FC<JoinTournamentModalProps> = ({
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Wallet Debit Rule</span>
             </div>
-            <p>
-              ₹{totalFee} will be deducted first from your Deposit Balance, and the remainder from Winning Cash.
-            </p>
+            {totalFee === 0 ? (
+              <p>This match has free entry! No wallet balance will be deducted.</p>
+            ) : (
+              <p>
+                ₹{totalFee} will be deducted first from your Deposit Balance, and the remainder from Winning Cash.
+              </p>
+            )}
           </div>
 
           {/* Submit Button */}
           <button
             type="submit"
             disabled={loading || isInsufficient}
-            className="w-full py-3.5 bg-[#B6FF3C] hover:bg-[#a5e834] text-black font-bold text-sm rounded-xl flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-50 shadow-lg"
+            className="w-full py-3.5 bg-[#B6FF3C] hover:bg-[#a5e834] text-black font-bold text-sm rounded-xl flex items-center justify-center gap-2 transition active:scale-98 disabled:opacity-50 shadow-lg cursor-pointer"
           >
-            <span>{loading ? 'Registering...' : `Pay ₹${totalFee} & Confirm`}</span>
+            <span>{loading ? 'Registering...' : totalFee === 0 ? 'Join Free Match' : `Pay ₹${totalFee} & Confirm`}</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>

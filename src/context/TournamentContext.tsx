@@ -25,6 +25,11 @@ import {
   LeaderboardItem,
   UserNotification
 } from '../types';
+import { 
+  getFilledPlayerSlots, 
+  getPlayersPerEntry, 
+  isUserAlreadyRegistered 
+} from '../lib/tournamentUtils';
 import { apiCreatePayment, apiCheckPaymentStatus } from '../lib/paymentApi';
 
 interface TournamentContextType {
@@ -79,6 +84,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
   const [deposits, setDeposits] = useState<Deposit[]>([]);
   const [withdrawals, setWithdrawals] = useState<Withdrawal[]>([]);
+  const [userCustomTxs, setUserCustomTxs] = useState<TransactionRecord[]>([]);
   const [rawLeaderboard, setRawLeaderboard] = useState<LeaderboardItem[]>([]);
   const [allUsersList, setAllUsersList] = useState<LeaderboardItem[]>([]);
   const [globalNotifications, setGlobalNotifications] = useState<UserNotification[]>([]);
@@ -108,7 +114,11 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           ...item,
           id,
         }));
-        setTournaments(list);
+        // Stage B filter: Fully hide completed/archived tournaments from all user screens
+        const userFacingList = list.filter(
+          (t) => !t.archived && !t.isCompleted && t.status !== 'completed'
+        );
+        setTournaments(userFacingList);
       } else {
         setTournaments([]);
       }
@@ -371,9 +381,25 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     }, (err) => console.warn("Withdrawals query err:", err));
 
+    const userTxsRef = ref(db, `transactions/${currentUser.uid}`);
+    const unsubscribeUserTxs = onValue(userTxsRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.val();
+        const list: TransactionRecord[] = Object.entries(data).map(([id, item]: [string, any]) => ({
+          ...item,
+          id,
+        }));
+        list.sort((a, b) => Number(b.timestamp || b.createdAt || 0) - Number(a.timestamp || a.createdAt || 0));
+        setUserCustomTxs(list);
+      } else {
+        setUserCustomTxs([]);
+      }
+    }, (err) => console.warn("User transactions query err:", err));
+
     return () => {
       off(depositsRef);
       off(withdrawalsRef);
+      off(userTxsRef);
     };
   }, [currentUser]);
 
@@ -443,9 +469,35 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       });
     });
 
+    userCustomTxs.forEach(tx => {
+      const typeLower = (tx.type || '').toLowerCase();
+      const isPrize = typeLower.includes('prize') || typeLower.includes('win');
+      const isJoin = typeLower.includes('join') || typeLower.includes('entry');
+      const defaultDesc = isPrize
+        ? `Tournament Prize — ${tx.tournamentName || 'Match'}`
+        : isJoin
+        ? `Tournament Entry — ${tx.tournamentName || 'Match'}`
+        : tx.type || 'Transaction';
+
+      items.push({
+        id: tx.id,
+        userId: tx.userId,
+        type: isPrize ? 'Tournament Prize' : isJoin ? 'Tournament Entry' : (tx.type || 'Transaction'),
+        amount: Number(tx.amount || 0),
+        isCredit: isPrize,
+        timestamp: tx.timestamp || tx.createdAt || Date.now(),
+        status: tx.status || 'completed',
+        description: tx.description || defaultDesc,
+        tournamentId: tx.tournamentId,
+        tournamentName: tx.tournamentName,
+        kills: tx.kills,
+        rank: tx.rank,
+      });
+    });
+
     items.sort((a, b) => Number(b.timestamp) - Number(a.timestamp));
     return items;
-  }, [deposits, withdrawals]);
+  }, [deposits, withdrawals, userCustomTxs]);
 
   // Active Pending API Deposit (single in-flight API payment for current user)
   const activePendingApiDeposit = useMemo(() => {
@@ -604,27 +656,27 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return { success: false, message: 'Tournament registration is closed' };
     }
 
-    const isDuo = (tourney.mode || '').toLowerCase().includes('duo');
-    const totalFee = tourney.entryFee * (isDuo ? 2 : 1);
+    const mode = (tourney.mode || '').toLowerCase();
+    const isDuo = mode.includes('duo');
+    const isSquad = mode.includes('squad');
+    const slotsNeeded = isSquad ? 4 : isDuo ? 2 : 1;
+    const totalFee = (tourney.entryFee || 0) * slotsNeeded;
 
-    // Check if already registered
-    const isAlreadyReg = tourney.registeredPlayers && (
-      Array.isArray(tourney.registeredPlayers)
-        ? tourney.registeredPlayers.some((p: any) => p?.uid === currentUser.uid || p?.userId === currentUser.uid)
-        : !!(tourney.registeredPlayers as Record<string, any>)[currentUser.uid]
-    );
-
-    if (isAlreadyReg) {
+    // Check if already registered in tournament or user record
+    const alreadyRegistered = isUserAlreadyRegistered(tourney, currentUser.uid);
+    if (alreadyRegistered) {
       return { success: false, message: 'You have already joined this tournament' };
     }
 
-    const currentRegisteredCount = tourney.registeredPlayers
-      ? Array.isArray(tourney.registeredPlayers)
-        ? tourney.registeredPlayers.length
-        : Object.keys(tourney.registeredPlayers).length
-      : 0;
+    const userJoinedSnap = await get(ref(db, `users/${currentUser.uid}/joinedTournaments/${tournamentId}`));
+    if (userJoinedSnap.exists() && userJoinedSnap.val()) {
+      return { success: false, message: 'You have already joined this tournament' };
+    }
 
-    if (currentRegisteredCount >= tourney.maxPlayers) {
+    // Check slots
+    const filledSlots = getFilledPlayerSlots(tourney);
+    const maxSlots = tourney.maxPlayers || 100;
+    if (filledSlots + slotsNeeded > maxSlots) {
       return { success: false, message: 'Tournament is full' };
     }
 
@@ -684,7 +736,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return { success: false, message: err.message || 'Transaction error during wallet debit' };
     }
 
-    // STEP 2: Reserve player slot in tournament
+    // STEP 2: Reserve player slot in tournament atomically with duplicate guard
     const tourneyRegRef = ref(db, `tournaments/${tournamentId}/registeredPlayers/${currentUser.uid}`);
     try {
       const playerPayload = {
@@ -693,14 +745,42 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         joinedAt: Date.now(),
         username,
         gameUid,
+        mode: tourney.mode || 'Solo',
+        slots: slotsNeeded,
         ...(isDuo ? { teammateUsername: teammateUsername || '', teammateGameUid: teammateGameUid || '' } : {})
       };
 
-      await set(tourneyRegRef, playerPayload);
+      let duplicateDetected = false;
+      const regResult = await runTransaction(tourneyRegRef, (currentSlot) => {
+        if (currentSlot !== null) {
+          duplicateDetected = true;
+          return; // Abort: player already exists in registeredPlayers
+        }
+        return playerPayload;
+      });
+
+      if (!regResult.committed || duplicateDetected) {
+        throw new Error('ALREADY_REGISTERED');
+      }
 
       // Record in user's joinedTournaments
       await update(ref(db, `users/${currentUser.uid}/joinedTournaments`), {
         [tournamentId]: true,
+      });
+
+      // Add transaction log entry for wallet history
+      const txRef = push(ref(db, `transactions/${currentUser.uid}`));
+      await set(txRef, {
+        userId: currentUser.uid,
+        type: 'tournament_join',
+        amount: totalFee,
+        isCredit: false,
+        tournamentId,
+        tournamentName: tourney.name,
+        description: `Tournament Entry — ${tourney.name}`,
+        status: 'completed',
+        timestamp: Date.now(),
+        createdAt: Date.now(),
       });
 
       // Add in-app notification
@@ -736,6 +816,13 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         } catch (refundErr) {
           console.error("Critical: Compensating refund failed. Contact support.", refundErr);
         }
+      }
+
+      if (regError?.message === 'ALREADY_REGISTERED') {
+        return {
+          success: false,
+          message: 'You have already joined this tournament. Your wallet was not charged.',
+        };
       }
 
       return { 

@@ -73,8 +73,25 @@ export interface Tournament {
   showIdPass?: boolean;
   prizeDistribution?: any;
   registeredPlayers?: Record<string, RegisteredPlayer> | RegisteredPlayer[];
+  results?: Record<string, TournamentPlayerResult>;
+  resultsPublished?: boolean;
+  resultsCredited?: boolean;
   createdAt?: number;
   updatedAt?: number;
+  [key: string]: any;
+}
+
+export interface TournamentPlayerResult {
+  userId?: string;
+  username: string;
+  gameUid: string;
+  isTeammate?: boolean;
+  teammateOfUserId?: string;
+  kills: number;
+  extraAmount: number;
+  rank: number;
+  calculatedPrize: number;
+  creditedAt?: number;
   [key: string]: any;
 }
 

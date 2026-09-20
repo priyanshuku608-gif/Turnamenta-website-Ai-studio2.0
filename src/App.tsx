@@ -90,7 +90,14 @@ const UserAppContent: React.FC = () => {
     }
   }, [settings?.appName]);
 
-  // 3. Emergency Maintenance Mode Blocking
+  // 3. Reset scroll position on tab or active sub-screen switch
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [currentTab, activeGame]);
+
+  // 4. Emergency Maintenance Mode Blocking
   if (settings?.maintenanceMode) {
     return <MaintenanceScreen settings={settings} />;
   }
@@ -155,7 +162,10 @@ const UserAppContent: React.FC = () => {
           {currentTab === 'leaderboard' && <LeaderboardScreen />}
 
           {currentTab === 'profile' && (
-            <ProfileScreen onRoomKeyClick={(t) => setRoomKeyTournament(t)} />
+            <ProfileScreen
+              onRoomKeyClick={(t) => setRoomKeyTournament(t)}
+              onDetailsClick={(t) => setDetailsTournament(t)}
+            />
           )}
         </main>
 
