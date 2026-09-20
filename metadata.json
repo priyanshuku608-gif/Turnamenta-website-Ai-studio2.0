@@ -1,0 +1,6 @@
+{
+  "name": "BattlePro - Esports Tournament Arena",
+  "description": "Esports tournament platform for real cash matches, player wallets, rankings, and administrative management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

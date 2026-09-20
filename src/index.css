@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary: #B6FF3C;
+  --color-primary-hover: #a5e834;
+  --color-secondary: #1E293B;
+  --color-accent: #38BDF8;
+  --color-bg-primary: #0B1120;
+  --color-surface: #131C31;
+  --color-text: #F8FAFC;
+}
+
+@keyframes bannerShimmer {
+  0% {
+    transform: translateX(-150%) skewX(-20deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.6;
+  }
+  35% {
+    opacity: 0.6;
+  }
+  50%, 100% {
+    transform: translateX(250%) skewX(-20deg);
+    opacity: 0;
+  }
+}
+
+.banner-shimmer-sweep {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.04) 20%,
+    rgba(255, 255, 255, 0.35) 50%,
+    rgba(255, 255, 255, 0.04) 80%,
+    transparent 100%
+  );
+  pointer-events: none;
+  animation: bannerShimmer 3.8s ease-in-out infinite;
+  will-change: transform;
+}
