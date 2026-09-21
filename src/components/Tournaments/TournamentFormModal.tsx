@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Trophy, X, AlertCircle, Key } from 'lucide-react';
 import { Tournament, Game } from '../../types';
+import { useAdminData } from '../../context/AdminDataContext';
+import { ImageUploadButton } from '../Common/ImageUploadButton';
 
 interface TournamentFormModalProps {
   isOpen: boolean;
@@ -17,6 +19,7 @@ export const TournamentFormModal: React.FC<TournamentFormModalProps> = React.mem
   editingTournament,
   games,
 }) => {
+  const { settings } = useAdminData();
   const [gameId, setGameId] = useState('');
   const [name, setName] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -334,13 +337,35 @@ export const TournamentFormModal: React.FC<TournamentFormModalProps> = React.mem
             {/* Banner URL */}
             <div className="space-y-1">
               <label className="text-xs font-semibold text-slate-300">Banner Image URL</label>
-              <input
-                type="url"
-                value={bannerUrl}
-                onChange={(e) => setBannerUrl(e.target.value)}
-                placeholder="https://example.com/match-banner.png"
-                className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
-              />
+              <div className="flex flex-col sm:flex-row gap-2 w-full max-w-full">
+                <input
+                  type="url"
+                  value={bannerUrl}
+                  onChange={(e) => setBannerUrl(e.target.value)}
+                  placeholder="https://example.com/match-banner.png"
+                  className="flex-1 min-w-0 w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white outline-none"
+                />
+                <ImageUploadButton
+                  apiKey={settings?.imgbbApiKey}
+                  onUploaded={(url) => setBannerUrl(url)}
+                  label="Upload"
+                  className="w-full sm:w-auto shrink-0"
+                />
+              </div>
+              {bannerUrl && (
+                <div className="pt-1 max-w-full overflow-hidden">
+                  <div className="h-24 w-full max-w-full rounded-xl overflow-hidden bg-[#0A0F1D] border border-slate-800 flex items-center justify-center">
+                    <img
+                      src={bannerUrl}
+                      alt="Banner Preview"
+                      className="w-full h-full max-w-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Description / Rules */}

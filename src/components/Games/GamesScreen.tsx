@@ -4,9 +4,10 @@ import { ref, push, set, update, remove, serverTimestamp } from 'firebase/databa
 import { db } from '../../lib/firebase';
 import { useAdminData } from '../../context/AdminDataContext';
 import { Game } from '../../types';
+import { ImageUploadButton } from '../Common/ImageUploadButton';
 
 export const GamesScreen: React.FC = () => {
-  const { games, tournaments } = useAdminData();
+  const { games, tournaments, settings } = useAdminData();
   const [modalOpen, setModalOpen] = useState(false);
   const [editingGame, setEditingGame] = useState<Game | null>(null);
   const [name, setName] = useState('');
@@ -228,26 +229,34 @@ export const GamesScreen: React.FC = () => {
 
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-slate-300">Image / Artwork URL</label>
-                <input
-                  type="url"
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://example.com/game-cover.png"
-                  className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none transition"
-                />
+                <div className="flex flex-col sm:flex-row gap-2 w-full max-w-full">
+                  <input
+                    type="url"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    placeholder="https://example.com/game-cover.png"
+                    className="flex-1 min-w-0 w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 outline-none transition"
+                  />
+                  <ImageUploadButton
+                    apiKey={settings?.imgbbApiKey}
+                    onUploaded={(url) => setImageUrl(url)}
+                    label="Upload"
+                    className="w-full sm:w-auto shrink-0"
+                  />
+                </div>
                 <p className="text-[10px] text-slate-500">
                   Optional. Leave blank to display the neutral game icon.
                 </p>
               </div>
 
               {imageUrl && (
-                <div className="space-y-1">
+                <div className="space-y-1 max-w-full overflow-hidden">
                   <span className="text-[11px] text-slate-400">Artwork Preview:</span>
-                  <div className="h-28 w-full rounded-xl overflow-hidden bg-[#0A0F1D] border border-slate-700">
+                  <div className="h-28 w-full max-w-full rounded-xl overflow-hidden bg-[#0A0F1D] border border-slate-700 flex items-center justify-center">
                     <img
                       src={imageUrl}
                       alt="Preview"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full max-w-full object-cover"
                       onError={() => setErrorMsg('Failed to load image from this URL.')}
                     />
                   </div>

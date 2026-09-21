@@ -374,8 +374,16 @@ export const AdminDataProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     activeRefs.push({ ref: themeRef, callback: unsubTheme });
 
     return () => {
-      activeRefs.forEach(({ ref: r }) => {
-        off(r);
+      activeRefs.forEach(({ callback, ref: r }) => {
+        try {
+          if (typeof callback === 'function') {
+            callback();
+          } else {
+            off(r);
+          }
+        } catch (e) {
+          // ignore cleanup errors
+        }
       });
     };
   }, [currentUser, isAuthorizedAdmin]);

@@ -287,6 +287,10 @@ export interface AppSettings {
   policyRefund?: string;
   policyFairPlay?: string;
   otpApiBaseUrl?: string;
+  paymentApiBaseUrl?: string;
+  imgbbApiKey?: string;
+  backgroundMusicUrl?: string;
+  clickSoundUrl?: string;
   privacyPolicy?: string;
   termsConditions?: string;
   refundPolicy?: string;

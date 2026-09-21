@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X,
   ShieldCheck,
@@ -13,9 +13,11 @@ import {
   ArrowLeft,
   RotateCw,
   KeyRound,
+  LogIn,
 } from 'lucide-react';
 import { ref, set } from 'firebase/database';
-import { db } from '../lib/firebase';
+import { fetchSignInMethodsForEmail } from 'firebase/auth';
+import { auth, db } from '../lib/firebase';
 import { useAuth } from '../context/AuthContext';
 import { useTournament } from '../context/TournamentContext';
 
@@ -72,13 +74,25 @@ export const AuthModal: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [userAlreadyExists, setUserAlreadyExists] = useState(false);
 
-  // OTP Verification states
+  // OTP Verification states (6-box Telegram-style input)
   const [enteredOtp, setEnteredOtp] = useState('');
+  const [otpDigits, setOtpDigits] = useState<string[]>(['', '', '', '', '', '']);
+  const otpInputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const [timerSeconds, setTimerSeconds] = useState(59);
   const [storedOtpData, setStoredOtpData] = useState<StoredOtpData | null>(null);
 
   const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
+
+  // Focus first OTP box when entering OTP view
+  useEffect(() => {
+    if (view === 'otp') {
+      setTimeout(() => {
+        otpInputRefs.current[0]?.focus();
+      }, 100);
+    }
+  }, [view]);
 
   // 59-Second Countdown Timer for OTP screen
   useEffect(() => {
@@ -96,8 +110,12 @@ export const AuthModal: React.FC = () => {
   const switchView = useCallback((nextView: 'login' | 'register' | 'otp') => {
     setView(nextView);
     setErrorMsg(null);
+    if (nextView !== 'register') {
+      setUserAlreadyExists(false);
+    }
     if (nextView !== 'otp') {
       setEnteredOtp('');
+      setOtpDigits(['', '', '', '', '', '']);
     }
   }, []);
 
@@ -300,11 +318,27 @@ export const AuthModal: React.FC = () => {
 
     setLoading(true);
     setErrorMsg(null);
+    setUserAlreadyExists(false);
 
     try {
+      // Check if email already registered via Firebase Auth before sending OTP
+      try {
+        const methods = await fetchSignInMethodsForEmail(auth, cleanEmail);
+        if (methods && methods.length > 0) {
+          setErrorMsg('An account with this email already exists — please log in instead.');
+          setUserAlreadyExists(true);
+          setLoading(false);
+          return;
+        }
+      } catch (checkErr: any) {
+        console.warn('Pre-check email notice:', checkErr);
+      }
+
       await sendOtpApiCall(cleanEmail, cleanName);
       // Move to OTP screen
       setTimerSeconds(59);
+      setOtpDigits(['', '', '', '', '', '']);
+      setEnteredOtp('');
       switchView('otp');
     } catch (err: any) {
       setErrorMsg(err.message || 'Could not send verification OTP. Please try again.');
@@ -325,6 +359,8 @@ export const AuthModal: React.FC = () => {
       await sendOtpApiCall(email.trim(), displayName.trim());
       setTimerSeconds(59);
       setEnteredOtp('');
+      setOtpDigits(['', '', '', '', '', '']);
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 100);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to resend OTP. Please try again.');
     } finally {
@@ -335,9 +371,9 @@ export const AuthModal: React.FC = () => {
   // -------------------------------------------------------------
   // 6. Verify OTP and Create Account
   // -------------------------------------------------------------
-  const handleVerifyOtpAndCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanCode = enteredOtp.trim();
+  const handleVerifyOtpAndCreate = async (e?: React.FormEvent, codeToVerify?: string) => {
+    if (e) e.preventDefault();
+    const cleanCode = (codeToVerify || enteredOtp || otpDigits.join('')).trim();
 
     if (!cleanCode || cleanCode.length < 6) {
       setErrorMsg('Please enter the complete 6-digit verification code.');
@@ -376,11 +412,13 @@ export const AuthModal: React.FC = () => {
 
       // Reset state
       setEnteredOtp('');
+      setOtpDigits(['', '', '', '', '', '']);
       setStoredOtpData(null);
       switchView('login');
     } catch (signUpErr: any) {
       if (signUpErr.code === 'auth/email-already-in-use') {
-        setErrorMsg('An account with this email already exists. Please Sign In.');
+        setErrorMsg('An account with this email already exists — please log in instead.');
+        setUserAlreadyExists(true);
         switchView('login');
       } else if (signUpErr.code === 'auth/weak-password') {
         setErrorMsg('Password is too weak. Please go back and pick a stronger password.');
@@ -394,6 +432,87 @@ export const AuthModal: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // -------------------------------------------------------------
+  // 6-Digit Telegram-Style Box Handlers
+  // -------------------------------------------------------------
+  const handleDigitChange = (index: number, val: string) => {
+    const raw = val.replace(/\D/g, '');
+    if (!raw) {
+      const updated = [...otpDigits];
+      updated[index] = '';
+      setOtpDigits(updated);
+      setEnteredOtp(updated.join(''));
+      return;
+    }
+
+    // If pasted or fast-typed multiple digits
+    if (raw.length > 1) {
+      handlePastedCode(raw);
+      return;
+    }
+
+    const singleDigit = raw.slice(-1);
+    const updated = [...otpDigits];
+    updated[index] = singleDigit;
+    setOtpDigits(updated);
+    const fullCode = updated.join('');
+    setEnteredOtp(fullCode);
+
+    // Automatically advance focus to the next box
+    if (index < 5) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+
+    // If all 6 digits entered, auto-verify!
+    if (fullCode.length === 6) {
+      handleVerifyOtpAndCreate(undefined, fullCode);
+    }
+  };
+
+  const handleDigitKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace') {
+      if (!otpDigits[index] && index > 0) {
+        const updated = [...otpDigits];
+        updated[index - 1] = '';
+        setOtpDigits(updated);
+        setEnteredOtp(updated.join(''));
+        otpInputRefs.current[index - 1]?.focus();
+      }
+    } else if (e.key === 'ArrowLeft' && index > 0) {
+      e.preventDefault();
+      otpInputRefs.current[index - 1]?.focus();
+    } else if (e.key === 'ArrowRight' && index < 5) {
+      e.preventDefault();
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handlePastedCode = (pastedText: string) => {
+    const digitsOnly = pastedText.replace(/\D/g, '').slice(0, 6);
+    if (!digitsOnly) return;
+
+    const updated = ['', '', '', '', '', ''];
+    for (let i = 0; i < digitsOnly.length; i++) {
+      updated[i] = digitsOnly[i];
+    }
+    setOtpDigits(updated);
+    const fullCode = updated.join('');
+    setEnteredOtp(fullCode);
+
+    const nextFocus = Math.min(digitsOnly.length, 5);
+    otpInputRefs.current[nextFocus]?.focus();
+
+    if (fullCode.length === 6) {
+      handleVerifyOtpAndCreate(undefined, fullCode);
+    }
+  };
+
+  const handlePasteEvent = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text');
+    handlePastedCode(pasted);
   };
 
   return (
@@ -431,9 +550,24 @@ export const AuthModal: React.FC = () => {
 
         {/* Error Notification Banner */}
         {errorMsg && (
-          <div className="mb-3.5 p-3 bg-red-950/70 border border-red-500/40 rounded-xl flex items-start gap-2 text-red-200 text-xs animate-shake">
-            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-            <span className="leading-tight">{errorMsg}</span>
+          <div className="mb-3.5 p-3 bg-red-950/70 border border-red-500/40 rounded-xl space-y-2 text-red-200 text-xs animate-shake">
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <span className="leading-tight">{errorMsg}</span>
+            </div>
+            {userAlreadyExists && (
+              <button
+                type="button"
+                onClick={() => {
+                  setUserAlreadyExists(false);
+                  switchView('login');
+                }}
+                className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-98 shadow-md"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Go to Login with {email || 'this email'}</span>
+              </button>
+            )}
           </div>
         )}
 
@@ -628,13 +762,13 @@ export const AuthModal: React.FC = () => {
         )}
 
         {/* ========================================================= */}
-        {/* VIEW 3: OTP VERIFICATION SCREEN                          */}
+        {/* VIEW 3: OTP VERIFICATION SCREEN (Telegram-style 6 boxes) */}
         {/* ========================================================= */}
         {view === 'otp' && (
-          <form onSubmit={handleVerifyOtpAndCreate} className="space-y-4">
-            <div className="space-y-2">
+          <form onSubmit={(e) => handleVerifyOtpAndCreate(e)} className="space-y-4">
+            <div className="space-y-3">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-300 font-semibold">6-Digit Verification Code</span>
+                <span className="text-slate-300 font-semibold">Enter 6-Digit Code</span>
                 <button
                   type="button"
                   onClick={() => switchView('register')}
@@ -645,17 +779,33 @@ export const AuthModal: React.FC = () => {
                 </button>
               </div>
 
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={6}
-                value={enteredOtp}
-                onChange={(e) => setEnteredOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="• • • • • •"
-                autoFocus
-                className="w-full bg-[#0F172A] border-2 border-slate-700 focus:border-[#B6FF3C] rounded-xl py-3 text-center text-2xl font-mono font-bold tracking-[0.5em] text-white outline-none transition shadow-inner"
-              />
+              {/* 6 Individual Digit Boxes */}
+              <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                {otpDigits.map((digit, index) => {
+                  const isFilled = Boolean(digit);
+                  return (
+                    <input
+                      key={index}
+                      ref={(el) => {
+                        otpInputRefs.current[index] = el;
+                      }}
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => handleDigitChange(index, e.target.value)}
+                      onKeyDown={(e) => handleDigitKeyDown(index, e)}
+                      onPaste={handlePasteEvent}
+                      className={`w-11 h-13 sm:w-12 sm:h-14 text-center text-xl sm:text-2xl font-mono font-bold rounded-xl border-2 transition-all duration-200 outline-none select-none ${
+                        isFilled
+                          ? 'border-[#B6FF3C] bg-[#B6FF3C]/15 text-[#B6FF3C] shadow-[0_0_12px_rgba(182,255,60,0.35)] scale-105'
+                          : 'border-slate-700/80 bg-[#0F172A] text-white focus:border-[#B6FF3C] focus:bg-slate-900 focus:ring-2 focus:ring-[#B6FF3C]/30'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
             </div>
 
             {/* 59-Second Countdown Timer & Resend Button */}
@@ -691,7 +841,7 @@ export const AuthModal: React.FC = () => {
             {/* Verify Button */}
             <button
               type="submit"
-              disabled={loading || enteredOtp.length < 6}
+              disabled={loading || otpDigits.join('').length < 6}
               className="w-full py-2.5 bg-[#B6FF3C] hover:bg-[#a5e834] text-black font-extrabold text-xs rounded-xl flex items-center justify-center gap-1.5 transition active:scale-98 shadow-md disabled:opacity-50"
             >
               <span>{loading ? 'Verifying...' : 'Verify & Enter Arena'}</span>

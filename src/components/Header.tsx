@@ -1,8 +1,9 @@
-import React from 'react';
-import { Bell, Wallet as WalletIcon, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Bell, Wallet as WalletIcon, ArrowLeft, Volume2, VolumeX } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useTournament } from '../context/TournamentContext';
 import { TabType } from '../types';
+import { isSoundMuted, setSoundMuted } from '../lib/soundManager';
 
 interface HeaderProps {
   currentTab: TabType;
@@ -27,6 +28,15 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const { currentUser, userProfile, openAuthModal } = useAuth();
   const { unreadNotificationCount, settings } = useTournament();
+  const [muted, setMutedState] = useState(isSoundMuted());
+
+  const hasAudioConfigured = Boolean(settings?.backgroundMusicUrl || settings?.clickSoundUrl);
+
+  const toggleSound = () => {
+    const nextMuted = !muted;
+    setSoundMuted(nextMuted);
+    setMutedState(nextMuted);
+  };
 
   const totalBalance = (
     Number(userProfile?.depositBalance || userProfile?.balance || 0) +
@@ -103,8 +113,24 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Right Section: Notification Bell + Wallet Chip */}
+      {/* Right Section: Sound Toggle + Notification Bell + Wallet Chip */}
       <div className="flex items-center gap-2">
+        {/* Sound Toggle (if backgroundMusicUrl or clickSoundUrl is configured) */}
+        {hasAudioConfigured && (
+          <button
+            onClick={toggleSound}
+            className="w-9 h-9 rounded-full bg-slate-800/60 border border-slate-700/50 flex items-center justify-center text-slate-300 hover:text-[#B6FF3C] active:scale-95 transition shrink-0"
+            title={muted ? 'Unmute Audio' : 'Mute Audio'}
+            aria-label={muted ? 'Unmute Audio' : 'Mute Audio'}
+          >
+            {muted ? (
+              <VolumeX className="w-4 h-4 text-slate-400" />
+            ) : (
+              <Volume2 className="w-4 h-4 text-[#B6FF3C]" />
+            )}
+          </button>
+        )}
+
         {/* Notification Bell */}
         <button
           onClick={onOpenNotifications}

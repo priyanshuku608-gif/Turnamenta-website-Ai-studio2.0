@@ -129,9 +129,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     });
 
     return () => {
-      off(tournamentsRef);
+      unsubscribe();
     };
-  }, []);
+  }, [currentUser?.uid]);
 
   // Listen to Games
   useEffect(() => {
@@ -150,9 +150,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, (err) => console.warn("Games listener err:", err));
 
     return () => {
-      off(gamesRef);
+      unsubscribe();
     };
-  }, []);
+  }, [currentUser?.uid]);
 
   // Listen to Promotions
   useEffect(() => {
@@ -171,9 +171,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, (err) => console.warn("Promotions listener err:", err));
 
     return () => {
-      off(promotionsRef);
+      unsubscribe();
     };
-  }, []);
+  }, [currentUser?.uid]);
 
   // Listen to Settings
   useEffect(() => {
@@ -186,9 +186,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, (err) => console.warn("Settings listener err:", err));
 
     return () => {
-      off(settingsRef);
+      unsubscribe();
     };
-  }, []);
+  }, [currentUser?.uid]);
 
   // Listen to Global Notifications
   useEffect(() => {
@@ -211,9 +211,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, (err) => console.warn("Notifications listener err:", err));
 
     return () => {
-      off(notifRef);
+      unsubscribe();
     };
-  }, []);
+  }, [currentUser?.uid]);
 
   // Listen to Leaderboard node and fallback to all users for ranking
   useEffect(() => {
@@ -270,10 +270,10 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, (err) => console.warn("Users for leaderboard err:", err));
 
     return () => {
-      off(leaderboardRef);
-      off(usersRef);
+      unsubscribeLeaderboard();
+      unsubscribeUsers();
     };
-  }, []);
+  }, [currentUser?.uid]);
 
   // Compute final Leaderboard with auto-ranking and manual override support
   const leaderboard = useMemo(() => {
@@ -397,11 +397,11 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }, (err) => console.warn("User transactions query err:", err));
 
     return () => {
-      off(depositsRef);
-      off(withdrawalsRef);
-      off(userTxsRef);
+      unsubscribeDeposits();
+      unsubscribeWithdrawals();
+      unsubscribeUserTxs();
     };
-  }, [currentUser]);
+  }, [currentUser?.uid]);
 
   // Combine User Notifications
   const notifications = useMemo(() => {
@@ -410,6 +410,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           ...item,
           id,
           createdAt: item.createdAt || item.timestamp || Date.now(),
+          timestamp: item.timestamp || item.createdAt || Date.now(),
         }))
       : [];
     const combined = [...globalNotifications, ...userNotifs];
@@ -612,7 +613,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     const checkStatus = async () => {
       try {
-        const data = await apiCheckPaymentStatus(uniqueid);
+        const data = await apiCheckPaymentStatus(uniqueid, settings?.paymentApiBaseUrl);
         if (!isMounted || !data) return;
 
         if (data.status === 'success' || data.status === 'expired') {
@@ -951,7 +952,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       await set(newDepositRef, initialDepositData);
 
       // 3. Call CREATE PAYMENT API via robust client proxy & fallback
-      const data = await apiCreatePayment(amount, uniqueid);
+      const data = await apiCreatePayment(amount, uniqueid, settings?.paymentApiBaseUrl);
 
       if (!data || !data.success || !data.payment_url) {
         throw new Error(data?.message || 'Payment gateway failed to initialize checkout link');

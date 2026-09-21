@@ -31,8 +31,9 @@ export interface CheckPaymentStatusResponse {
 /**
  * Initiate an instant payment via the server-side relay
  */
-export async function apiCreatePayment(amount: number, uniqueid: string): Promise<CreatePaymentResponse> {
-  const res = await fetch(`/api/create-payment?amount=${encodeURIComponent(amount)}&uniqueid=${encodeURIComponent(uniqueid)}`);
+export async function apiCreatePayment(amount: number, uniqueid: string, baseUrl?: string): Promise<CreatePaymentResponse> {
+  const baseParam = baseUrl ? `&baseUrl=${encodeURIComponent(baseUrl)}` : '';
+  const res = await fetch(`/api/create-payment?amount=${encodeURIComponent(amount)}&uniqueid=${encodeURIComponent(uniqueid)}${baseParam}`);
   
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');
@@ -51,8 +52,9 @@ export async function apiCreatePayment(amount: number, uniqueid: string): Promis
 /**
  * Check payment status via the server-side relay
  */
-export async function apiCheckPaymentStatus(uniqueid: string): Promise<CheckPaymentStatusResponse> {
-  const res = await fetch(`/api/check-status?uniqueid=${encodeURIComponent(uniqueid)}`);
+export async function apiCheckPaymentStatus(uniqueid: string, baseUrl?: string): Promise<CheckPaymentStatusResponse> {
+  const baseParam = baseUrl ? `&baseUrl=${encodeURIComponent(baseUrl)}` : '';
+  const res = await fetch(`/api/check-status?uniqueid=${encodeURIComponent(uniqueid)}${baseParam}`);
   
   if (!res.ok) {
     const errorText = await res.text().catch(() => '');

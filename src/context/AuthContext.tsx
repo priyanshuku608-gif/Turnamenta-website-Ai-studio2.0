@@ -57,6 +57,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       if (user) {
+        if (unsubscribeProfile) {
+          unsubscribeProfile();
+          unsubscribeProfile = null;
+        }
         // Listen to live user profile from Realtime Database
         const userRef = ref(db, `users/${user.uid}`);
         unsubscribeProfile = onValue(userRef, async (snapshot) => {

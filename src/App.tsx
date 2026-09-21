@@ -20,6 +20,7 @@ import { TournamentDetailsModal } from './components/Tournament/TournamentDetail
 import { JoinTournamentModal } from './components/Tournament/JoinTournamentModal';
 import { RoomCredentialsModal } from './components/Tournament/RoomCredentialsModal';
 import { RechargeWizardModal } from './components/Wallet/RechargeWizardModal';
+import { updateBackgroundMusic, playClickSound } from './lib/soundManager';
 
 const applyThemeToDocument = (theme: ThemeConfig | null) => {
   const root = document.documentElement;
@@ -79,18 +80,42 @@ const UserAppContent: React.FC = () => {
     );
 
     return () => {
-      off(themeRef);
+      unsubscribeTheme();
     };
   }, []);
 
-  // 2. Sync Document Title with Admin App Name
+  // 2. Background Music Synchronization
+  useEffect(() => {
+    updateBackgroundMusic(settings?.backgroundMusicUrl);
+  }, [settings?.backgroundMusicUrl]);
+
+  // 3. Global Click Sound Effect Handler
+  useEffect(() => {
+    if (!settings?.clickSoundUrl) return;
+
+    const handleGlobalClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      const interactiveEl = target.closest('button, a, [role="button"], input[type="submit"]');
+      if (interactiveEl && settings?.clickSoundUrl) {
+        playClickSound(settings.clickSoundUrl);
+      }
+    };
+
+    document.addEventListener('click', handleGlobalClick, { capture: true });
+    return () => {
+      document.removeEventListener('click', handleGlobalClick, { capture: true });
+    };
+  }, [settings?.clickSoundUrl]);
+
+  // 4. Sync Document Title with Admin App Name
   useEffect(() => {
     if (settings?.appName) {
       document.title = `${settings.appName} - Esports Tournament Arena`;
     }
   }, [settings?.appName]);
 
-  // 3. Reset scroll position on tab or active sub-screen switch
+  // 5. Reset scroll position on tab or active sub-screen switch
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
     document.documentElement.scrollTop = 0;

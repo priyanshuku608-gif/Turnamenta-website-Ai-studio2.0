@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Settings as SettingsIcon,
   Save,
@@ -14,11 +14,16 @@ import {
   KeyRound,
   Globe,
   Image as ImageIcon,
+  Music,
+  Volume2,
+  Play,
+  Square,
 } from 'lucide-react';
 import { ref, update, serverTimestamp } from 'firebase/database';
 import { db } from '../../lib/firebase';
 import { useAdminData } from '../../context/AdminDataContext';
 import { AppSettings } from '../../types';
+import { ImageUploadButton } from '../Common/ImageUploadButton';
 
 export const SettingsScreen: React.FC = () => {
   const { settings } = useAdminData();
@@ -30,6 +35,16 @@ export const SettingsScreen: React.FC = () => {
   // Payment & Deposits
   const [upiId, setUpiId] = useState('');
   const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [paymentApiBaseUrl, setPaymentApiBaseUrl] = useState('https://payment-production-6e11.up.railway.app');
+
+  // ImgBB API Key
+  const [imgbbApiKey, setImgbbApiKey] = useState('');
+
+  // Audio & Sound Effects
+  const [backgroundMusicUrl, setBackgroundMusicUrl] = useState('');
+  const [clickSoundUrl, setClickSoundUrl] = useState('');
+  const [isPreviewAudioPlaying, setIsPreviewAudioPlaying] = useState(false);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Financial Limits
   const [referralBonus, setReferralBonus] = useState<number | ''>(10);
@@ -65,6 +80,10 @@ export const SettingsScreen: React.FC = () => {
       setAppIconUrl(settings.appIconUrl || settings.logoUrl || '');
       setUpiId(settings.upiId || '');
       setQrCodeUrl(settings.qrCodeUrl || '');
+      setPaymentApiBaseUrl(settings.paymentApiBaseUrl || 'https://payment-production-6e11.up.railway.app');
+      setImgbbApiKey(settings.imgbbApiKey || '');
+      setBackgroundMusicUrl(settings.backgroundMusicUrl || '');
+      setClickSoundUrl(settings.clickSoundUrl || '');
       setReferralBonus(settings.referralBonus !== undefined ? settings.referralBonus : 10);
       setMinWithdrawal(settings.minWithdrawal !== undefined ? settings.minWithdrawal : 50);
       setMaxWithdrawal(settings.maxWithdrawal !== undefined ? settings.maxWithdrawal : 10000);
@@ -86,6 +105,64 @@ export const SettingsScreen: React.FC = () => {
     }
   }, [settings]);
 
+  // Clean up preview audio on unmount
+  useEffect(() => {
+    return () => {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+        previewAudioRef.current = null;
+      }
+    };
+  }, []);
+
+  const togglePreviewAudio = () => {
+    if (!backgroundMusicUrl || !backgroundMusicUrl.trim()) {
+      alert('Please enter a valid Background Music Audio URL first.');
+      return;
+    }
+
+    if (isPreviewAudioPlaying && previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      setIsPreviewAudioPlaying(false);
+    } else {
+      if (previewAudioRef.current) {
+        previewAudioRef.current.pause();
+      }
+      try {
+        const audio = new Audio(backgroundMusicUrl.trim());
+        audio.volume = 0.5;
+        audio.onended = () => setIsPreviewAudioPlaying(false);
+        audio.onerror = () => {
+          alert('Could not load or play the audio URL. Please check that it is a direct link to an MP3 or audio file.');
+          setIsPreviewAudioPlaying(false);
+        };
+        audio.play().then(() => {
+          setIsPreviewAudioPlaying(true);
+        }).catch((err) => {
+          alert('Audio playback error: ' + err.message);
+          setIsPreviewAudioPlaying(false);
+        });
+        previewAudioRef.current = audio;
+      } catch (err: any) {
+        alert('Could not initialize audio preview: ' + err.message);
+      }
+    }
+  };
+
+  const testClickSound = () => {
+    if (!clickSoundUrl || !clickSoundUrl.trim()) {
+      alert('Please enter a Click Sound Audio URL first.');
+      return;
+    }
+    try {
+      const audio = new Audio(clickSoundUrl.trim());
+      audio.volume = 0.6;
+      audio.play().catch((err) => alert('Click sound error: ' + err.message));
+    } catch (err: any) {
+      alert('Could not play click sound: ' + err.message);
+    }
+  };
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -103,6 +180,10 @@ export const SettingsScreen: React.FC = () => {
         maintenanceJoinLink: maintenanceJoinLink.trim() || null,
         upiId: upiId.trim() || null,
         qrCodeUrl: qrCodeUrl.trim() || null,
+        paymentApiBaseUrl: paymentApiBaseUrl.trim() || 'https://payment-production-6e11.up.railway.app',
+        imgbbApiKey: imgbbApiKey.trim() || null,
+        backgroundMusicUrl: backgroundMusicUrl.trim() || null,
+        clickSoundUrl: clickSoundUrl.trim() || null,
         referralBonus: Number(referralBonus) || 0,
         minWithdrawal: Number(minWithdrawal) || 0,
         maxWithdrawal: Number(maxWithdrawal) || 0,
@@ -186,44 +267,89 @@ export const SettingsScreen: React.FC = () => {
                 <label className="font-semibold text-slate-300">App Icon (Image URL)</label>
                 <span className="text-[10px] text-slate-500 font-mono">settings.appIconUrl</span>
               </div>
-              <input
-                type="url"
-                value={appIconUrl}
-                onChange={(e) => setAppIconUrl(e.target.value)}
-                placeholder="https://example.com/app-icon.png"
-                className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-white outline-none"
-              />
+              <div className="flex flex-col sm:flex-row gap-2 w-full max-w-full">
+                <input
+                  type="url"
+                  value={appIconUrl}
+                  onChange={(e) => setAppIconUrl(e.target.value)}
+                  placeholder="https://example.com/app-icon.png"
+                  className="flex-1 min-w-0 w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-white outline-none text-xs"
+                />
+                <ImageUploadButton
+                  apiKey={imgbbApiKey || settings?.imgbbApiKey}
+                  onUploaded={(url) => setAppIconUrl(url)}
+                  label="Upload"
+                  className="w-full sm:w-auto shrink-0"
+                />
+              </div>
               <p className="text-[11px] text-slate-500">
-                Image URL for the app header brand icon and maintenance screen.
+                Image URL or uploaded icon for the app header brand icon and maintenance screen.
               </p>
             </div>
           </div>
 
           {appIconUrl && (
-            <div className="pt-2 flex items-center gap-3">
-              <div className="w-12 h-12 bg-slate-900 border border-slate-700 rounded-xl overflow-hidden p-1 shrink-0 flex items-center justify-center">
+            <div className="pt-2 flex items-center gap-3 max-w-full overflow-hidden">
+              <div className="w-12 h-12 max-w-[48px] max-h-[48px] bg-slate-900 border border-slate-700 rounded-xl overflow-hidden p-1 shrink-0 flex items-center justify-center">
                 <img
                   src={appIconUrl}
                   alt="App Icon Preview"
-                  className="w-full h-full object-contain"
+                  className="w-full h-full max-w-full object-contain"
                   onError={(e) => {
                     (e.target as HTMLImageElement).style.display = 'none';
                   }}
                 />
               </div>
-              <div className="text-xs text-slate-400">
-                <strong className="text-white block">{appName || 'App Icon Preview'}</strong>
-                Icon preview for app header and banners.
+              <div className="text-xs text-slate-400 min-w-0 flex-1 truncate">
+                <strong className="text-white block truncate">{appName || 'App Icon Preview'}</strong>
+                <span className="text-[11px] text-slate-500 block truncate">Icon preview for app header and banners</span>
               </div>
             </div>
           )}
+        </div>
+
+        {/* ImgBB Image Upload Configuration */}
+        <div className="bg-[#131C31] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+          <div className="flex items-center gap-2">
+            <ImageIcon className="w-5 h-5 text-[#B6FF3C]" />
+            <h2 className="text-sm font-bold text-white">ImgBB Image Hosting Gateway (Free Cloud CDN)</h2>
+          </div>
+          <p className="text-xs text-slate-400">
+            Provide a free ImgBB API Key to enable instant 1-click image uploads across tournament banners, games, promotions, QR codes, and app icons.
+          </p>
+
+          <div className="space-y-1.5 text-xs">
+            <div className="flex items-center justify-between">
+              <label className="font-semibold text-slate-300">ImgBB API Key</label>
+              <span className="text-[10px] text-slate-500 font-mono">settings.imgbbApiKey</span>
+            </div>
+            <input
+              type="text"
+              value={imgbbApiKey}
+              onChange={(e) => setImgbbApiKey(e.target.value)}
+              placeholder="e.g. 7f8a9b1c2d3e4f5a6b7c8d9e0f"
+              className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-white font-mono outline-none text-xs"
+            />
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+              <span>Used by all "Upload Image" buttons throughout the operator panel.</span>
+              <a
+                href="https://api.imgbb.com/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#B6FF3C] hover:underline inline-flex items-center gap-1"
+              >
+                <span>Get Free ImgBB Key</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          </div>
         </div>
 
         {/* Payment & QR Gateway Configuration */}
         <div className="bg-[#131C31] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
           <div className="flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-[#B6FF3C]" />
-            <h2 className="text-sm font-bold text-white">Payment & Deposit Gateway (UPI)</h2>
+            <h2 className="text-sm font-bold text-white">Payment & Deposit Gateway (UPI & Automated API)</h2>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
@@ -240,26 +366,132 @@ export const SettingsScreen: React.FC = () => {
 
             <div className="space-y-1">
               <label className="font-semibold text-slate-300">Payment QR Code Image URL</label>
-              <input
-                type="url"
-                value={qrCodeUrl}
-                onChange={(e) => setQrCodeUrl(e.target.value)}
-                placeholder="https://example.com/payment-qr.png"
-                className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-white outline-none"
-              />
+              <div className="flex flex-col sm:flex-row gap-2 w-full max-w-full">
+                <input
+                  type="url"
+                  value={qrCodeUrl}
+                  onChange={(e) => setQrCodeUrl(e.target.value)}
+                  placeholder="https://example.com/payment-qr.png"
+                  className="flex-1 min-w-0 w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-white outline-none text-xs"
+                />
+                <ImageUploadButton
+                  apiKey={imgbbApiKey || settings?.imgbbApiKey}
+                  onUploaded={(url) => setQrCodeUrl(url)}
+                  label="Upload QR"
+                  className="w-full sm:w-auto shrink-0"
+                />
+              </div>
             </div>
           </div>
 
           {qrCodeUrl && (
-            <div className="pt-2 flex items-center gap-4">
-              <div className="w-20 h-20 bg-white p-1 rounded-xl overflow-hidden shrink-0">
-                <img src={qrCodeUrl} alt="QR Code Preview" className="w-full h-full object-contain" />
+            <div className="pt-2 flex items-center gap-4 max-w-full overflow-hidden">
+              <div className="w-20 h-20 max-w-[80px] max-h-[80px] bg-white p-1 rounded-xl overflow-hidden shrink-0 flex items-center justify-center">
+                <img src={qrCodeUrl} alt="QR Code Preview" className="w-full h-full max-w-full object-contain" />
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-400 min-w-0 flex-1">
                 This QR Code is presented to users on their in-app deposit checkout screen.
               </p>
             </div>
           )}
+
+          {/* Automated Payment Gateway Base URL */}
+          <div className="pt-2 border-t border-slate-800/80 space-y-1.5 text-xs">
+            <div className="flex items-center justify-between">
+              <label className="font-semibold text-slate-300">Automated Payment Gateway API Base URL</label>
+              <span className="text-[10px] text-slate-500 font-mono">settings.paymentApiBaseUrl</span>
+            </div>
+            <input
+              type="url"
+              value={paymentApiBaseUrl}
+              onChange={(e) => setPaymentApiBaseUrl(e.target.value)}
+              placeholder="https://payment-production-6e11.up.railway.app"
+              className="w-full bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-white font-mono outline-none text-xs"
+            />
+            <p className="text-[11px] text-slate-500">
+              Default: <code className="text-slate-400">https://payment-production-6e11.up.railway.app</code>. Handled via backend /api/create-payment and /api/check-status relays to avoid browser CORS errors.
+            </p>
+          </div>
+        </div>
+
+        {/* Audio & Sound Effects (Music & Clicks) */}
+        <div className="bg-[#131C31] border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+          <div className="flex items-center gap-2">
+            <Music className="w-5 h-5 text-[#B6FF3C]" />
+            <h2 className="text-sm font-bold text-white">Audio & Sound FX (Background Arena Music & UI Taps)</h2>
+          </div>
+          <p className="text-xs text-slate-400">
+            Enrich the player app with optional background arena music and button tap sound effects. Players can easily mute or unmute from the top header.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 text-xs">
+            {/* Background Music */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="font-semibold text-slate-300">Background Music URL (MP3/WAV/OGG)</label>
+                <span className="text-[10px] text-slate-500 font-mono">settings.backgroundMusicUrl</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={backgroundMusicUrl}
+                  onChange={(e) => setBackgroundMusicUrl(e.target.value)}
+                  placeholder="https://example.com/audio/arena-theme.mp3"
+                  className="flex-1 bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-white outline-none font-mono text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={togglePreviewAudio}
+                  disabled={!backgroundMusicUrl}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl flex items-center gap-1.5 disabled:opacity-40 transition active:scale-95 shrink-0"
+                >
+                  {isPreviewAudioPlaying ? (
+                    <>
+                      <Square className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                      <span>Stop</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5 text-[#B6FF3C] fill-[#B6FF3C]" />
+                      <span>Preview</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Plays as low-volume looping background theme in the user app.
+              </p>
+            </div>
+
+            {/* Click Sound */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="font-semibold text-slate-300">Click Sound Effect URL (Short Audio)</label>
+                <span className="text-[10px] text-slate-500 font-mono">settings.clickSoundUrl</span>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="url"
+                  value={clickSoundUrl}
+                  onChange={(e) => setClickSoundUrl(e.target.value)}
+                  placeholder="https://example.com/audio/click.mp3"
+                  className="flex-1 bg-[#0A0F1D] border border-slate-700 focus:border-[#B6FF3C] rounded-xl px-3.5 py-2 text-white outline-none font-mono text-xs"
+                />
+                <button
+                  type="button"
+                  onClick={testClickSound}
+                  disabled={!clickSoundUrl}
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl flex items-center gap-1.5 disabled:opacity-40 transition active:scale-95 shrink-0"
+                >
+                  <Volume2 className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Test Tap</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                Triggered instantly whenever buttons or interactive controls are tapped.
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Financial Limits & Rules */}

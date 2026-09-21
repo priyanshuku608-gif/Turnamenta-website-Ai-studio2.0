@@ -47,8 +47,14 @@ export const NotificationsModal: React.FC<NotificationsModalProps> = ({ isOpen, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-md max-h-[85vh] bg-[#1E293B] border border-slate-700 rounded-t-3xl sm:rounded-2xl p-5 shadow-2xl flex flex-col text-slate-100">
+    <div 
+      className="fixed inset-0 z-50 flex items-start justify-center pt-14 sm:pt-16 px-3 sm:px-4 bg-black/75 backdrop-blur-sm animate-fade-in"
+      onClick={onClose}
+    >
+      <div 
+        className="relative w-full max-w-md max-h-[80vh] bg-[#1E293B] border border-slate-700/80 rounded-2xl p-5 shadow-2xl flex flex-col text-slate-100 animate-in slide-in-from-top-5 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-700/80">
           <div className="flex items-center gap-2">
